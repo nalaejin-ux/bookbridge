@@ -1,0 +1,18 @@
+{
+  "name": "나은·지윤 독서 기록",
+  "short_name": "독서친구",
+  "description": "경북 독서친구 독서 기록 앱",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#FFF5F8",
+  "theme_color": "#EC407A",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'><rect x='8' y='18' width='64' height='44' rx='11' fill='%234DB6AC'/><ellipse cx='26' cy='38' rx='9' ry='10' fill='white'/><circle cx='27.5' cy='39' r='5.5' fill='%231a1a1a'/><ellipse cx='50' cy='38' rx='9' ry='10' fill='white'/><circle cx='51.5' cy='39' r='5.5' fill='%231a1a1a'/></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
