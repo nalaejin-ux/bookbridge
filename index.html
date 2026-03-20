@@ -1,23 +1,62 @@
 <!DOCTYPE html>
+
 <html lang="ko">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
   <meta name="mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
-  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <meta name="apple-mobile-web-app-title" content="독서친구"/>
   <title>나은·지윤 독서 기록</title>
   <link rel="manifest" href="manifest.json"/>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-    body { font-family: -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
-      background: #f8f8f8; min-height: 100vh; overscroll-behavior: none; }
-    button { font-family: inherit; cursor: pointer; }
-    input, textarea { font-family: inherit; }
-    :root { --pink: #EC407A; --pink-light: #FCE4EC; --pink-border: #F8BBD9; --pink-card: #FFE8F0;
-            --blue: #1565C0; --blue-light: #E3F2FD; --blue-border: #90CAF9; --blue-card: #DDEEFF;
-            --green: #43A047; --green-light: #E8F5E9; --green-border: #A5D6A7; }
+    html { height: 100%; }
+    body {
+      font-family: -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+      background: #f5f5f5;
+      min-height: 100%;
+      overscroll-behavior: none;
+      /* 아이패드 Safe Area 대응 */
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    button { font-family: inherit; cursor: pointer; -webkit-appearance: none; }
+    input, textarea { font-family: inherit; -webkit-appearance: none; border-radius: 0; }
+    textarea { -webkit-overflow-scrolling: touch; }
+    /* 아이패드 분할화면 대응 */
+    #app { max-width: 600px; margin: 0 auto; position: relative; }
+    .tab-bar {
+      position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 100%; max-width: 600px;
+      background: rgba(255,255,255,0.95);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      border-top: 1px solid rgba(0,0,0,0.1);
+      display: flex;
+      /* 아이패드 홈바 여백 */
+      padding-bottom: max(14px, env(safe-area-inset-bottom));
+      padding-top: 8px;
+      z-index: 100;
+    }
+    .tab-bar button {
+      flex: 1; background: none; border: none; cursor: pointer;
+      font-size: 10px; transition: color .15s;
+    }
+    .tab-bar button div.icon { font-size: 24px; margin-bottom: 2px; }
+    /* 스크롤 부드럽게 */
+    .scroll-body { -webkit-overflow-scrolling: touch; }
+    /* 검색 input - iOS 스타일 초기화 */
+    .search-input {
+      width: 100%; padding: 11px 14px;
+      border-radius: 12px; border: 2px solid var(--border);
+      font-size: 16px; /* iOS에서 14px 미만이면 자동 줌 발생 */
+      outline: none; background: #fff;
+      display: block;
+    }
+    /* 버튼 active 피드백 */
+    button:active { opacity: 0.75; }
   </style>
 </head>
 <body>
@@ -25,7 +64,7 @@
 
 <script>
 // ════════════════════════════════════════════════════
-//  데이터
+//  책 데이터
 // ════════════════════════════════════════════════════
 const BOOKS = {
   나은: [
@@ -143,61 +182,71 @@ const BOOKS = {
 
 const KIDS = {
   나은: { grade:"4학년", emoji:"👧", gender:"딸",
-    hdr:["#F06292","#FFD54F"], btn:"#EC407A", bg:"#FFF5F8",
-    card:"#FFE8F0", border:"#F8BBD9", text:"#880E4F", soft:"#FCE4EC" },
+    hdr:["#F06292","#FFD54F"], btn:"#EC407A",
+    bg:"#FFF5F8", card:"#FFE8F0", border:"#F8BBD9", text:"#880E4F", soft:"#FCE4EC" },
   지윤: { grade:"1학년", emoji:"👦", gender:"아들",
-    hdr:["#1976D2","#43A047"], btn:"#1565C0", bg:"#F0F8FF",
-    card:"#E3F2FD", border:"#90CAF9", text:"#0D47A1", soft:"#BBDEFB" },
+    hdr:["#1976D2","#43A047"], btn:"#1565C0",
+    bg:"#F0F8FF", card:"#E3F2FD", border:"#90CAF9", text:"#0D47A1", soft:"#BBDEFB" },
 };
 
-const FACE = ["😞","😐","🙂","😄","🤩"];
+const FACE       = ["😞","😐","🙂","😄","🤩"];
 const FACE_LABEL = ["별로","그냥","괜찮아","재밌어","최고!"];
-const BF = "https://bookfriend.info.go.kr";
+const BF  = "https://bookfriend.info.go.kr";
 const LIB = "https://lib.andong.go.kr/child/search/tot/index.ax?query=";
-const KEY = "andong_reading_v3";
+const KEY = "andong_reading_v4";
 
-// ════════════════════════════════════════════════════
-//  유틸
-// ════════════════════════════════════════════════════
-function getStore() { try { return JSON.parse(localStorage.getItem(KEY))||{}; } catch { return {}; } }
-function setStore(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} }
-function getWeekSeed() { const d=new Date(); return `${d.getFullYear()}-${d.getMonth()}-${Math.ceil(d.getDate()/7)}`; }
+// ── 유틸 ────────────────────────────────────────────────
+const getStore = () => { try { return JSON.parse(localStorage.getItem(KEY))||{}; } catch { return {}; } };
+const setStore = s  => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} };
+
+function getWeekSeed() {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth()}-${Math.ceil(d.getDate()/7)}`;
+}
 function seededShuffle(arr, seed) {
-  const a=[...arr]; let s=seed.split("").reduce((acc,c)=>acc+c.charCodeAt(0),0);
-  for(let i=a.length-1;i>0;i--){s=(s*9301+49297)%233280;const j=Math.floor(s/233280*i);[a[i],a[j]]=[a[j],a[i]];}
+  const a = [...arr];
+  let s = seed.split("").reduce((acc,c)=>acc+c.charCodeAt(0), 0);
+  for (let i = a.length-1; i>0; i--) {
+    s = (s*9301+49297) % 233280;
+    const j = Math.floor(s/233280*i);
+    [a[i],a[j]] = [a[j],a[i]];
+  }
   return a;
 }
 function pickRec(kid, readSet, ratingMap) {
-  const pool = BOOKS[kid].filter(b=>!readSet.has(b.t));
-  if(!pool.length) return [];
-  const liked = new Set(Object.entries(ratingMap).filter(([,v])=>v>=4).map(([t])=>BOOKS[kid].find(b=>b.t===t)?.a).filter(Boolean));
-  return seededShuffle([...pool.filter(b=>liked.has(b.a)),...pool.filter(b=>!liked.has(b.a))], getWeekSeed()+kid).slice(0,3);
+  const pool = BOOKS[kid].filter(b => !readSet.has(b.t));
+  if (!pool.length) return [];
+  const liked = new Set(
+    Object.entries(ratingMap).filter(([,v])=>v>=4)
+      .map(([t]) => BOOKS[kid].find(b=>b.t===t)?.a).filter(Boolean)
+  );
+  return seededShuffle(
+    [...pool.filter(b=>liked.has(b.a)), ...pool.filter(b=>!liked.has(b.a))],
+    getWeekSeed()+kid
+  ).slice(0,3);
 }
-function el(tag, attrs={}, ...children) {
+
+// DOM 생성 헬퍼
+function el(tag, attrs, ...children) {
   const e = document.createElement(tag);
-  Object.entries(attrs).forEach(([k,v])=>{ if(k==="style"&&typeof v==="object") Object.assign(e.style,v); else if(k.startsWith("on")) e.addEventListener(k.slice(2).toLowerCase(),v); else e.setAttribute(k,v); });
-  children.flat().forEach(c=>{ if(c==null) return; e.appendChild(typeof c==="string"?document.createTextNode(c):c); });
+  if (attrs) Object.entries(attrs).forEach(([k,v]) => {
+    if (k === "style" && typeof v === "object") Object.assign(e.style, v);
+    else if (k.startsWith("on"))               e.addEventListener(k.slice(2).toLowerCase(), v);
+    else                                        e.setAttribute(k, v);
+  });
+  children.flat().forEach(c => {
+    if (c == null) return;
+    e.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+  });
   return e;
 }
-function svg(code) { const d=document.createElement("div"); d.innerHTML=code; return d.firstChild; }
+function svgEl(code) { const d = document.createElement("div"); d.innerHTML = code; return d.firstChild; }
 
-// ════════════════════════════════════════════════════
-//  앱 상태
-// ════════════════════════════════════════════════════
-let state = { kid:"나은", tab:"home", searchQ:"", reviewTarget:null, reviewText:"", reviewStar:3, bfGuide:null, bfStep:0, doneBook:null };
-
-function render() {
-  document.getElementById("app").innerHTML = "";
-  document.getElementById("app").appendChild(buildApp());
-}
-
-// ════════════════════════════════════════════════════
-//  SVG 아이콘 (책 모양 눈알)
-// ════════════════════════════════════════════════════
-function bookIcon(size=44, fillColor="rgba(255,255,255,0.92)") {
-  return svg(`<svg width="${size}" height="${size}" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect x="8" y="18" width="64" height="44" rx="11" fill="${fillColor}"/>
-    <polygon points="26,62 18,77 40,62" fill="${fillColor}"/>
+// ── 책 모양 눈알 아이콘 ──────────────────────────────────
+function bookIcon(size=44, fill="rgba(255,255,255,0.92)") {
+  return svgEl(`<svg width="${size}" height="${size}" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="8" y="18" width="64" height="44" rx="11" fill="${fill}"/>
+    <polygon points="26,62 18,77 40,62" fill="${fill}"/>
     <rect x="22" y="9" width="36" height="8" rx="3.5" fill="#212121" opacity="0.85"/>
     <polygon points="40,2 60,11 40,15 20,11" fill="#212121" opacity="0.85"/>
     <line x1="60" y1="11" x2="64" y2="22" stroke="#212121" stroke-width="2.5" stroke-linecap="round" opacity="0.85"/>
@@ -214,367 +263,648 @@ function bookIcon(size=44, fillColor="rgba(255,255,255,0.92)") {
   </svg>`);
 }
 
-// ════════════════════════════════════════════════════
-//  빌더 함수들
-// ════════════════════════════════════════════════════
-function buildApp() {
-  const { kid, tab } = state;
-  const C = KIDS[kid];
-  const store = getStore();
-  const kd = store[kid]||{read:[]};
-  const readSet = new Set((kd.read||[]).map(r=>r.t));
-  const ratingMap = Object.fromEntries((kd.read||[]).map(r=>[r.t,r.rating]));
-  const rec = pickRec(kid, readSet, ratingMap);
-  const totalRead = (kd.read||[]).length;
+// ── 앱 상태 ──────────────────────────────────────────────
+const S = {
+  kid: "나은", tab: "home",
+  searchQ: "",
+  reviewTarget: null, reviewText: "", reviewStar: 3,
+  bfGuide: null, bfStep: 0,
+  doneBook: null,
+};
 
-  const wrap = el("div",{style:{minHeight:"100vh",background:C.bg,paddingBottom:"76px"}});
+// ── 렌더 ─────────────────────────────────────────────────
+function render() {
+  const app = document.getElementById("app");
+  app.innerHTML = "";
+  app.appendChild(buildApp());
+}
+
+// 전체 목록 탭: 목록 영역만 부분 업데이트 (키보드 유지)
+function renderList() {
+  const C  = KIDS[S.kid];
+  const kd = (getStore()[S.kid] || {read:[]});
+  const readSet  = new Set((kd.read||[]).map(r=>r.t));
+  const ratingMap = Object.fromEntries((kd.read||[]).map(r=>[r.t,r.rating]));
+
+  const q        = S.searchQ.trim().toLowerCase();
+  const filtered = BOOKS[S.kid].filter(b =>
+    !q || b.t.toLowerCase().includes(q) || b.a.toLowerCase().includes(q)
+  );
+
+  const listEl  = document.getElementById("book-list");
+  const countEl = document.getElementById("book-count");
+  if (!listEl || !countEl) return;
+
+  countEl.textContent =
+    `전체 ${filtered.length}권 · 읽음 ${readSet.size}권 · 남은 ${filtered.filter(b=>!readSet.has(b.t)).length}권`;
+  listEl.innerHTML = "";
+
+  filtered.forEach(book => {
+    const done = readSet.has(book.t);
+    const rt   = ratingMap[book.t];
+    const row  = el("div", {style:{
+      display:"flex", alignItems:"center", gap:"10px",
+      padding:"10px 14px", borderRadius:"12px", marginBottom:"7px",
+      background: done ? "#f8f8f8" : "#fff",
+      border: `1.5px solid ${done ? "#e8e8e8" : C.border}`,
+      opacity: done ? "0.7" : "1",
+    }});
+    row.appendChild(el("div", {style:{
+      width:"32px", height:"32px", borderRadius:"8px", flexShrink:"0",
+      background: done ? C.soft : C.card,
+      display:"flex", alignItems:"center", justifyContent:"center", fontSize:"16px",
+    }}, done ? (rt>=4?"🤩":rt>=3?"😊":"📗") : "📖"));
+
+    const info = el("div", {style:{flex:"1", minWidth:"0"}});
+    info.appendChild(el("div", {style:{
+      fontWeight:"600", fontSize:"14px", color: done?"#aaa":C.text,
+      whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
+    }}, book.t));
+    info.appendChild(el("div", {style:{fontSize:"12px", color:"#bbb"}}, book.a+" · "+book.p));
+    row.appendChild(info);
+
+    if (done) {
+      const bf = el("button", {style:{
+        padding:"6px 10px", borderRadius:"8px", border:"none",
+        background:"#E8F5E9", color:"#2E7D32", fontSize:"12px", fontWeight:"600",
+        flexShrink:"0", cursor:"pointer",
+      }}, "경북독서친구");
+      bf.addEventListener("click", ()=>{ S.bfGuide=book; S.bfStep=0; render(); });
+      row.appendChild(bf);
+    } else {
+      const rb = el("button", {style:{
+        padding:"6px 12px", borderRadius:"8px", border:"none",
+        background:C.btn, color:"#fff", fontSize:"12px", fontWeight:"600",
+        flexShrink:"0", cursor:"pointer",
+      }}, "읽었어요");
+      rb.addEventListener("click", ()=>{
+        S.reviewTarget=book; S.reviewText=""; S.reviewStar=3; S.tab="review"; render();
+      });
+      row.appendChild(rb);
+    }
+    listEl.appendChild(row);
+  });
+}
+
+// ── 앱 빌드 ──────────────────────────────────────────────
+function buildApp() {
+  const C  = KIDS[S.kid];
+  const kd = (getStore()[S.kid] || {read:[]});
+  const readSet   = new Set((kd.read||[]).map(r=>r.t));
+  const ratingMap = Object.fromEntries((kd.read||[]).map(r=>[r.t,r.rating]));
+  const rec       = pickRec(S.kid, readSet, ratingMap);
+  const totalRead = (kd.read||[]).length;
+  const avgStar   = totalRead
+    ? ((kd.read||[]).reduce((s,r)=>s+r.rating,0)/totalRead).toFixed(1) : "-";
+
+  // 현재 탭에 따른 하단 여백 (탭바 높이)
+  const TABBAR_H = "72px";
+
+  const wrap = el("div", {style:{
+    minHeight:"100vh", background:C.bg, paddingBottom:TABBAR_H,
+  }});
 
   // 경북독서친구 모달
-  if(state.bfGuide) { wrap.appendChild(buildBFGuide()); }
+  if (S.bfGuide) wrap.appendChild(buildBFGuide());
 
-  // 헤더
-  const hdr = el("div",{style:{background:`linear-gradient(135deg,${C.hdr[0]},${C.hdr[1]})`,padding:"16px 18px 14px",display:"flex",alignItems:"center",gap:"12px"}});
-  hdr.appendChild(bookIcon(44,"rgba(255,255,255,0.92)"));
-  hdr.appendChild(el("div",{},
-    el("div",{style:{color:"rgba(255,255,255,0.78)",fontSize:"11px"}},"안동시어린이시립도서관 · 경북 독서친구"),
-    el("div",{style:{color:"#fff",fontSize:"19px",fontWeight:"800",marginTop:"2px",letterSpacing:"-0.5px"}},"우리 가족 독서 기록")
+  // ── 헤더 ──
+  const hdr = el("div", {style:{
+    background:`linear-gradient(135deg,${C.hdr[0]},${C.hdr[1]})`,
+    padding:"16px 18px 14px",
+    display:"flex", alignItems:"center", gap:"12px",
+  }});
+  hdr.appendChild(bookIcon(44, "rgba(255,255,255,0.92)"));
+  hdr.appendChild(el("div", {},
+    el("div", {style:{color:"rgba(255,255,255,0.78)", fontSize:"12px"}},
+      "안동시어린이시립도서관 · 경북 독서친구"),
+    el("div", {style:{color:"#fff", fontSize:"20px", fontWeight:"800",
+      marginTop:"2px", letterSpacing:"-0.5px"}}, "우리 가족 독서 기록"),
   ));
   wrap.appendChild(hdr);
 
-  // 아이 선택 탭
-  const kidRow = el("div",{style:{display:"flex",gap:"10px",padding:"14px 14px 0"}});
-  Object.entries(KIDS).forEach(([name,info])=>{
-    const on = kid===name;
-    const btn = el("button",{style:{flex:"1",padding:"12px 0",borderRadius:"16px",border:`2.5px solid ${on?info.btn:info.border}`,background:on?`linear-gradient(135deg,${info.hdr[0]},${info.hdr[1]})`:"#fff",color:on?"#fff":info.text,fontWeight:"700",fontSize:"15px",transition:"all .2s",boxShadow:on?`0 4px 16px ${info.btn}44`:"0 1px 4px #0001"}},
-      info.emoji+" "+name, el("span",{style:{display:"block",fontSize:"11px",fontWeight:"400",opacity:"0.85",marginTop:"1px"}},info.gender+" · "+info.grade));
-    btn.addEventListener("click",()=>{ state.kid=name; state.tab="home"; state.searchQ=""; render(); });
-    kidRow.appendChild(btn);
+  // ── 아이 선택 ──
+  const kidRow = el("div", {style:{display:"flex", gap:"10px", padding:"14px 14px 0"}});
+  Object.entries(KIDS).forEach(([name, info]) => {
+    const on = S.kid === name;
+    const b  = el("button", {style:{
+      flex:"1", padding:"13px 0", borderRadius:"16px",
+      border:`2.5px solid ${on?info.btn:info.border}`,
+      background: on ? `linear-gradient(135deg,${info.hdr[0]},${info.hdr[1]})` : "#fff",
+      color: on ? "#fff" : info.text,
+      fontWeight:"700", fontSize:"16px",
+      boxShadow: on ? `0 4px 16px ${info.btn}44` : "0 1px 4px #0001",
+      transition:"all .2s",
+    }},
+      info.emoji+" "+name,
+      el("span", {style:{display:"block", fontSize:"12px", fontWeight:"400",
+        opacity:"0.85", marginTop:"2px"}}, info.gender+" · "+info.grade),
+    );
+    b.addEventListener("click", ()=>{ S.kid=name; S.tab="home"; S.searchQ=""; render(); });
+    kidRow.appendChild(b);
   });
   wrap.appendChild(kidRow);
 
-  // 페이지 탭
-  const tabRow = el("div",{style:{display:"flex",gap:"6px",padding:"10px 14px 0"}});
-  [["home","🏠","이번 주"],["read","✅","읽은 책"],["library","📖","전체 목록"]].forEach(([key,icon,label])=>{
-    const on = tab===key;
-    const b = el("button",{style:{flex:"1",padding:"7px 0",borderRadius:"10px",border:`2px solid ${on?C.btn:C.border}`,background:on?C.card:"#fff",color:on?C.text:"#aaa",fontWeight:on?"700":"400",fontSize:"12px",transition:"all .2s"}},icon+" "+label);
-    b.addEventListener("click",()=>{ state.tab=key; render(); });
+  // ── 탭 ──
+  const tabRow = el("div", {style:{display:"flex", gap:"6px", padding:"10px 14px 0"}});
+  [["home","🏠","이번 주"],["read","✅","읽은 책"],["library","📖","전체 목록"]].forEach(([key,icon,label]) => {
+    const on = S.tab === key;
+    const b  = el("button", {style:{
+      flex:"1", padding:"8px 0", borderRadius:"10px",
+      border:`2px solid ${on?C.btn:C.border}`,
+      background: on ? C.card : "#fff",
+      color: on ? C.text : "#aaa",
+      fontWeight: on ? "700" : "400",
+      fontSize:"13px", transition:"all .2s",
+    }}, icon+" "+label);
+    b.addEventListener("click", ()=>{ S.tab=key; render(); });
     tabRow.appendChild(b);
   });
   wrap.appendChild(tabRow);
 
-  const body = el("div",{style:{padding:"14px"}});
+  // ── 본문 ──
+  const body = el("div", {style:{padding:"14px"}, "class":"scroll-body"});
 
-  // ── 홈 탭 ──
-  if(tab==="home") {
-    // 통계
-    const statRow = el("div",{style:{display:"flex",gap:"8px",marginBottom:"16px"}});
-    const avgStar = totalRead ? ((kd.read||[]).reduce((s,r)=>s+r.rating,0)/totalRead).toFixed(1) : "-";
-    [{l:"읽은 책",v:`${totalRead}권`,i:"📗"},{l:"평균 별점",v:avgStar,i:"⭐"},{l:"남은 책",v:`${BOOKS[kid].length-totalRead}권`,i:"📚"}].forEach(({l,v,i})=>{
-      statRow.appendChild(el("div",{style:{flex:"1",background:"#fff",borderRadius:"14px",padding:"12px 8px",textAlign:"center",boxShadow:"0 1px 8px #0001",border:`1.5px solid ${C.border}`}},
-        el("div",{style:{fontSize:"22px"}},i),
-        el("div",{style:{fontSize:"20px",fontWeight:"800",color:C.text}},v),
-        el("div",{style:{fontSize:"10px",color:"#bbb",marginTop:"2px"}},l)
+  // 홈 탭
+  if (S.tab === "home") {
+    // 통계 카드
+    const statRow = el("div", {style:{display:"flex", gap:"8px", marginBottom:"16px"}});
+    [{l:"읽은 책",v:`${totalRead}권`,i:"📗"},
+     {l:"평균 별점",v:avgStar,i:"⭐"},
+     {l:"남은 책",v:`${BOOKS[S.kid].length-totalRead}권`,i:"📚"}
+    ].forEach(({l,v,i}) => {
+      statRow.appendChild(el("div", {style:{
+        flex:"1", background:"#fff", borderRadius:"14px",
+        padding:"13px 8px", textAlign:"center",
+        boxShadow:"0 1px 8px #0001", border:`1.5px solid ${C.border}`,
+      }},
+        el("div", {style:{fontSize:"24px"}}, i),
+        el("div", {style:{fontSize:"21px", fontWeight:"800", color:C.text}}, v),
+        el("div", {style:{fontSize:"11px", color:"#bbb", marginTop:"2px"}}, l),
       ));
     });
     body.appendChild(statRow);
 
     // 경북독서친구 배너
-    const bfBanner = el("div",{style:{background:"linear-gradient(135deg,#2E7D32,#66BB6A)",borderRadius:"14px",padding:"12px 16px",marginBottom:"16px",display:"flex",alignItems:"center",gap:"12px",cursor:"pointer",boxShadow:"0 3px 12px #4CAF5033"}});
-    bfBanner.appendChild(bookIcon(36,"rgba(255,255,255,0.9)"));
-    bfBanner.appendChild(el("div",{style:{flex:"1"}},
-      el("div",{style:{color:"#fff",fontWeight:"800",fontSize:"14px"}},"경북독서친구 독후활동"),
-      el("div",{style:{color:"rgba(255,255,255,0.8)",fontSize:"11px",marginTop:"2px"}},"인증 받고 독후활동 하면 연간 시상 기회! 🏆")
+    const bfBanner = el("div", {style:{
+      background:"linear-gradient(135deg,#2E7D32,#66BB6A)",
+      borderRadius:"14px", padding:"13px 16px", marginBottom:"16px",
+      display:"flex", alignItems:"center", gap:"12px",
+      cursor:"pointer", boxShadow:"0 3px 12px #4CAF5033",
+    }});
+    bfBanner.appendChild(bookIcon(36, "rgba(255,255,255,0.9)"));
+    bfBanner.appendChild(el("div", {style:{flex:"1"}},
+      el("div", {style:{color:"#fff", fontWeight:"800", fontSize:"15px"}}, "경북독서친구 독후활동"),
+      el("div", {style:{color:"rgba(255,255,255,0.8)", fontSize:"12px", marginTop:"2px"}},
+        "인증 받고 독후활동 하면 연간 시상 기회! 🏆"),
     ));
-    bfBanner.appendChild(el("div",{style:{color:"rgba(255,255,255,0.7)",fontSize:"20px"}},"→"));
-    bfBanner.addEventListener("click",()=>window.open(BF,"_blank"));
+    bfBanner.appendChild(el("div", {style:{color:"rgba(255,255,255,0.7)", fontSize:"22px"}}, "→"));
+    bfBanner.addEventListener("click", ()=>window.open(BF, "_blank"));
     body.appendChild(bfBanner);
 
-    body.appendChild(el("div",{style:{fontWeight:"800",color:C.text,fontSize:"15px",marginBottom:"6px"}},`이번 주 ${KIDS[kid].emoji} ${kid}이 추천 3권`));
-    body.appendChild(el("div",{style:{fontSize:"11px",color:"#aaa",marginBottom:"12px"}},"안동시어린이시립도서관에서 빌려보세요 · 읽은 책 자동 제외"));
+    body.appendChild(el("div",
+      {style:{fontWeight:"800", color:C.text, fontSize:"16px", marginBottom:"6px"}},
+      `이번 주 ${KIDS[S.kid].emoji} ${S.kid}이 추천 3권`));
+    body.appendChild(el("div",
+      {style:{fontSize:"12px", color:"#aaa", marginBottom:"12px"}},
+      "안동시어린이시립도서관에서 빌려보세요 · 읽은 책 자동 제외"));
 
-    if(rec.length===0) {
-      body.appendChild(el("div",{style:{textAlign:"center",padding:"32px 0",color:"#ccc"}},el("div",{style:{fontSize:"48px"}},"🎊"),el("div",{style:{marginTop:"8px",fontWeight:"600"}},"목록의 책을 모두 읽었어요!")));
+    if (rec.length === 0) {
+      body.appendChild(el("div", {style:{textAlign:"center", padding:"40px 0", color:"#ccc"}},
+        el("div", {style:{fontSize:"52px"}}, "🎊"),
+        el("div", {style:{marginTop:"10px", fontWeight:"600", fontSize:"16px"}}, "목록의 책을 모두 읽었어요!"),
+      ));
     } else {
-      rec.forEach((book,i)=>body.appendChild(buildRecCard(book,i+1,C,readSet)));
+      rec.forEach((book, i) => body.appendChild(recCard(book, i+1, C, readSet)));
     }
 
-    // 최근 읽은 책
-    if((kd.read||[]).length>0) {
-      body.appendChild(el("div",{style:{fontWeight:"700",color:C.text,fontSize:"14px",margin:"18px 0 10px"}},"최근 읽은 책 ✨"));
-      (kd.read||[]).slice(0,3).forEach(r=>body.appendChild(buildReadCard(r,C,null)));
+    if ((kd.read||[]).length > 0) {
+      body.appendChild(el("div",
+        {style:{fontWeight:"700", color:C.text, fontSize:"15px", margin:"20px 0 10px"}},
+        "최근 읽은 책 ✨"));
+      (kd.read||[]).slice(0,3).forEach(r => body.appendChild(readCard(r, C, null)));
     }
   }
 
-  // ── 읽은 책 탭 ──
-  if(tab==="read") {
-    body.appendChild(el("div",{style:{fontWeight:"800",color:C.text,fontSize:"15px",marginBottom:"12px"}},`${KIDS[kid].emoji} ${kid}이가 읽은 책 (${totalRead}권)`));
-    if(totalRead===0) {
-      body.appendChild(el("div",{style:{textAlign:"center",padding:"40px 0",color:"#ccc"}},el("div",{style:{fontSize:"44px"}},"📭"),el("div",{style:{marginTop:"8px"}},"아직 읽은 책이 없어요")));
+  // 읽은 책 탭
+  if (S.tab === "read") {
+    body.appendChild(el("div",
+      {style:{fontWeight:"800", color:C.text, fontSize:"15px", marginBottom:"12px"}},
+      `${KIDS[S.kid].emoji} ${S.kid}이가 읽은 책 (${totalRead}권)`));
+    if (totalRead === 0) {
+      body.appendChild(el("div", {style:{textAlign:"center", padding:"48px 0", color:"#ccc"}},
+        el("div", {style:{fontSize:"48px"}}, "📭"),
+        el("div", {style:{marginTop:"10px"}}, "아직 읽은 책이 없어요"),
+      ));
     } else {
-      (kd.read||[]).forEach((r,i)=>body.appendChild(buildReadCard(r,C,i)));
+      (kd.read||[]).forEach((r, i) => body.appendChild(readCard(r, C, i)));
     }
   }
 
-  // ── 전체 목록 탭 ──
-  if(tab==="library") {
-    body.appendChild(el("div",{style:{fontWeight:"800",color:C.text,fontSize:"15px",marginBottom:"8px"}},`경북 독서친구 ${KIDS[kid].grade} 목록`));
-    const inp = el("input",{type:"text",placeholder:"제목이나 저자로 검색...",style:{width:"100%",padding:"10px 14px",borderRadius:"12px",border:`2px solid ${C.border}`,fontSize:"14px",outline:"none",marginBottom:"10px"}});
-    inp.value = state.searchQ;
-    inp.addEventListener("input",e=>{ state.searchQ=e.target.value; render(); });
+  // 전체 목록 탭
+  if (S.tab === "library") {
+    body.appendChild(el("div",
+      {style:{fontWeight:"800", color:C.text, fontSize:"15px", marginBottom:"8px"}},
+      `경북 독서친구 ${KIDS[S.kid].grade} 목록`));
+
+    // ★ 핵심: input은 render()와 무관하게 독립 유지 → 한글 입력 정상 동작
+    const inp = el("input", {
+      type:"text",
+      placeholder:"제목이나 저자로 검색...",
+      "class":"search-input",
+      style:{ marginBottom:"10px", border:`2px solid ${C.border}` },
+    });
+    inp.value = S.searchQ;
+    // input 이벤트: 목록 영역만 업데이트, render() 호출 안 함
+    inp.addEventListener("input", e => { S.searchQ = e.target.value; renderList(); });
+    // compositionend: 한글 조합 완료 시 한 번 더 보정
+    inp.addEventListener("compositionend", e => { S.searchQ = e.target.value; renderList(); });
     body.appendChild(inp);
 
-    const q = state.searchQ.trim().toLowerCase();
-    const filtered = BOOKS[kid].filter(b=>!q||b.t.toLowerCase().includes(q)||b.a.toLowerCase().includes(q));
-    body.appendChild(el("div",{style:{fontSize:"11px",color:"#aaa",marginBottom:"10px"}},`전체 ${filtered.length}권 · 읽음 ${readSet.size}권 · 남은 ${filtered.filter(b=>!readSet.has(b.t)).length}권`));
-
-    filtered.forEach(book=>{
-      const done=readSet.has(book.t), rt=ratingMap[book.t];
-      const row = el("div",{style:{display:"flex",alignItems:"center",gap:"10px",padding:"10px 14px",background:done?"#f8f8f8":"#fff",borderRadius:"12px",marginBottom:"7px",border:`1.5px solid ${done?"#e8e8e8":C.border}`,opacity:done?"0.7":"1"}});
-      row.appendChild(el("div",{style:{width:"32px",height:"32px",borderRadius:"8px",flexShrink:"0",background:done?C.soft:C.card,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"16px"}},done?(rt>=4?"🤩":rt>=3?"😊":"📗"):"📖"));
-      const info = el("div",{style:{flex:"1",minWidth:"0"}});
-      info.appendChild(el("div",{style:{fontWeight:"600",fontSize:"13px",color:done?"#aaa":C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},book.t));
-      info.appendChild(el("div",{style:{fontSize:"11px",color:"#bbb"}},book.a+" · "+book.p));
-      row.appendChild(info);
-      if(done) {
-        const bf = el("button",{style:{padding:"5px 9px",borderRadius:"8px",border:"none",background:"#E8F5E9",color:"#2E7D32",fontSize:"11px",fontWeight:"600",flexShrink:"0",cursor:"pointer"}},"경북독서친구");
-        bf.addEventListener("click",()=>{ state.bfGuide=book; state.bfStep=0; render(); });
-        row.appendChild(bf);
-      } else {
-        const rb = el("button",{style:{padding:"5px 11px",borderRadius:"8px",border:"none",background:C.btn,color:"#fff",fontSize:"11px",fontWeight:"600",flexShrink:"0",cursor:"pointer"}},"읽었어요");
-        rb.addEventListener("click",()=>{ state.reviewTarget=book; state.reviewText=""; state.reviewStar=3; state.tab="review"; render(); });
-        row.appendChild(rb);
-      }
-      body.appendChild(row);
-    });
+    body.appendChild(el("div", {"id":"book-count",
+      style:{fontSize:"12px", color:"#aaa", marginBottom:"10px"}}));
+    body.appendChild(el("div", {"id":"book-list"}));
+    // DOM 삽입 후 목록 채우기
+    setTimeout(renderList, 0);
   }
 
-  // ── 독서 평가 입력 ──
-  if(tab==="review" && state.reviewTarget) {
-    const back = el("button",{style:{background:"none",border:"none",color:C.btn,fontSize:"14px",cursor:"pointer",marginBottom:"14px",fontWeight:"600"}},"← 돌아가기");
-    back.addEventListener("click",()=>{ state.tab="home"; render(); });
+  // 독서 평가 입력 탭
+  if (S.tab === "review" && S.reviewTarget) {
+    const back = el("button", {style:{
+      background:"none", border:"none", color:C.btn,
+      fontSize:"15px", cursor:"pointer", marginBottom:"14px", fontWeight:"600",
+    }}, "← 돌아가기");
+    back.addEventListener("click", ()=>{ S.tab="home"; render(); });
     body.appendChild(back);
 
-    const card = el("div",{style:{background:"#fff",borderRadius:"20px",padding:"22px",border:`2.5px solid ${C.border}`,boxShadow:`0 4px 20px ${C.soft}88`}});
-    card.appendChild(el("div",{style:{fontSize:"11px",color:"#bbb",marginBottom:"4px"}},"읽은 책 기록하기"));
-    card.appendChild(el("div",{style:{fontWeight:"800",fontSize:"18px",color:C.text,lineHeight:"1.3",marginBottom:"3px"}},state.reviewTarget.t));
-    card.appendChild(el("div",{style:{fontSize:"12px",color:"#ccc",marginBottom:"24px"}},state.reviewTarget.a+" · "+state.reviewTarget.p));
-    card.appendChild(el("div",{style:{fontWeight:"700",color:C.text,fontSize:"14px",marginBottom:"10px"}},"얼마나 재밌었어? 😊"));
+    const card = el("div", {style:{
+      background:"#fff", borderRadius:"20px", padding:"22px",
+      border:`2.5px solid ${C.border}`, boxShadow:`0 4px 20px ${C.soft}88`,
+    }});
+    card.appendChild(el("div", {style:{fontSize:"12px", color:"#bbb", marginBottom:"4px"}}, "읽은 책 기록하기"));
+    card.appendChild(el("div", {style:{fontWeight:"800", fontSize:"19px", color:C.text,
+      lineHeight:"1.3", marginBottom:"4px"}}, S.reviewTarget.t));
+    card.appendChild(el("div", {style:{fontSize:"13px", color:"#bbb", marginBottom:"24px"}},
+      S.reviewTarget.a+" · "+S.reviewTarget.p));
 
-    const faceRow = el("div",{style:{display:"flex",gap:"6px",marginBottom:"22px"}});
-    [1,2,3,4,5].forEach(n=>{
-      const fb = el("button",{style:{flex:"1",padding:"10px 0",borderRadius:"14px",border:`2.5px solid ${state.reviewStar===n?C.btn:C.border}`,background:state.reviewStar===n?C.card:"#fff",cursor:"pointer",transition:"all .15s"}},
-        el("div",{style:{fontSize:"26px"}},FACE[n-1]),
-        el("div",{style:{fontSize:"9px",color:state.reviewStar===n?C.text:"#bbb",fontWeight:state.reviewStar===n?"700":"400",marginTop:"2px"}},FACE_LABEL[n-1])
+    card.appendChild(el("div", {style:{fontWeight:"700", color:C.text,
+      fontSize:"15px", marginBottom:"12px"}}, "얼마나 재밌었어? 😊"));
+
+    const faceRow = el("div", {style:{display:"flex", gap:"6px", marginBottom:"22px"}});
+    [1,2,3,4,5].forEach(n => {
+      const on = S.reviewStar === n;
+      const fb = el("button", {style:{
+        flex:"1", padding:"12px 0", borderRadius:"14px",
+        border:`2.5px solid ${on?C.btn:C.border}`,
+        background: on ? C.card : "#fff", cursor:"pointer", transition:"all .15s",
+      }},
+        el("div", {style:{fontSize:"28px"}}, FACE[n-1]),
+        el("div", {style:{fontSize:"10px", color:on?C.text:"#bbb",
+          fontWeight:on?"700":"400", marginTop:"3px"}}, FACE_LABEL[n-1]),
       );
-      fb.addEventListener("click",()=>{ state.reviewStar=n; render(); });
+      fb.addEventListener("click", ()=>{ S.reviewStar=n; render(); });
       faceRow.appendChild(fb);
     });
     card.appendChild(faceRow);
-    card.appendChild(el("div",{style:{fontWeight:"700",color:C.text,fontSize:"14px",marginBottom:"8px"}},"한 줄 독서평 ✏️ ",el("span",{style:{fontWeight:"400",color:"#bbb",fontSize:"12px"}},"(선택)")));
-    const ta = el("textarea",{placeholder:"이 책을 읽고 어떤 느낌이 들었어?",style:{width:"100%",height:"88px",padding:"11px 13px",borderRadius:"12px",border:`2px solid ${C.border}`,fontSize:"14px",resize:"none",outline:"none",color:"#333",lineHeight:"1.5",display:"block"}});
-    ta.value = state.reviewText;
-    ta.addEventListener("input",e=>state.reviewText=e.target.value);
+
+    card.appendChild(el("div", {style:{fontWeight:"700", color:C.text,
+      fontSize:"15px", marginBottom:"8px"}},
+      "한 줄 독서평 ✏️ ",
+      el("span", {style:{fontWeight:"400", color:"#bbb", fontSize:"13px"}}, "(선택)"),
+    ));
+
+    const ta = el("textarea", {
+      placeholder:"이 책을 읽고 어떤 느낌이 들었어?",
+      style:{
+        width:"100%", height:"90px", padding:"12px 14px",
+        borderRadius:"12px", border:`2px solid ${C.border}`,
+        fontSize:"16px", resize:"none", outline:"none",
+        color:"#333", lineHeight:"1.5", display:"block",
+      },
+    });
+    ta.value = S.reviewText;
+    ta.addEventListener("input", e => S.reviewText = e.target.value);
     card.appendChild(ta);
-    const sub = el("button",{style:{width:"100%",marginTop:"14px",padding:"15px 0",borderRadius:"16px",background:C.btn,color:"#fff",fontWeight:"800",fontSize:"17px",border:"none",cursor:"pointer",boxShadow:`0 3px 14px ${C.btn}55`}},"기록 완료! 🎉");
-    sub.addEventListener("click",()=>{
+
+    const sub = el("button", {style:{
+      width:"100%", marginTop:"14px", padding:"16px 0",
+      borderRadius:"16px", background:C.btn, color:"#fff",
+      fontWeight:"800", fontSize:"18px", border:"none",
+      cursor:"pointer", boxShadow:`0 3px 14px ${C.btn}55`,
+    }}, "기록 완료! 🎉");
+    sub.addEventListener("click", ()=>{
       const store = getStore();
-      const kd2 = store[kid]||{read:[]};
-      const entry = {...state.reviewTarget, review:state.reviewText, rating:state.reviewStar, date:new Date().toLocaleDateString("ko-KR")};
-      store[kid] = {...kd2, read:[entry,...(kd2.read||[])]};
+      const kd2   = store[S.kid] || {read:[]};
+      const entry = {
+        ...S.reviewTarget,
+        review: S.reviewText, rating: S.reviewStar,
+        date: new Date().toLocaleDateString("ko-KR"),
+      };
+      store[S.kid] = {...kd2, read:[entry, ...(kd2.read||[])]};
       setStore(store);
-      state.doneBook = state.reviewTarget;
-      state.reviewTarget = null;
-      state.tab = "done";
+      S.doneBook = S.reviewTarget;
+      S.reviewTarget = null;
+      S.tab = "done";
       render();
     });
     card.appendChild(sub);
     body.appendChild(card);
   }
 
-  // ── 완독 후 Next Step ──
-  if(tab==="done" && state.doneBook) {
-    const card = el("div",{style:{background:"#fff",borderRadius:"20px",padding:"24px",border:`2.5px solid ${C.border}`,textAlign:"center"}});
-    card.appendChild(el("div",{style:{fontSize:"52px",marginBottom:"8px"}},"🎉"));
-    card.appendChild(el("div",{style:{fontWeight:"800",fontSize:"20px",color:C.text,marginBottom:"4px"}},"완독 완료!"));
-    card.appendChild(el("div",{style:{fontWeight:"600",fontSize:"15px",color:"#555",marginBottom:"4px"}},`「${state.doneBook.t}」`));
-    card.appendChild(el("div",{style:{fontSize:"12px",color:"#aaa",marginBottom:"24px"}},"대단해요! 다음에는 무엇을 할까요?"));
+  // 완독 후 Next Step
+  if (S.tab === "done" && S.doneBook) {
+    const card = el("div", {style:{
+      background:"#fff", borderRadius:"20px", padding:"26px",
+      border:`2.5px solid ${C.border}`, textAlign:"center",
+    }});
+    card.appendChild(el("div", {style:{fontSize:"56px", marginBottom:"8px"}}, "🎉"));
+    card.appendChild(el("div", {style:{fontWeight:"800", fontSize:"22px", color:C.text, marginBottom:"4px"}}, "완독 완료!"));
+    card.appendChild(el("div", {style:{fontWeight:"600", fontSize:"16px", color:"#555", marginBottom:"4px"}},
+      `「${S.doneBook.t}」`));
+    card.appendChild(el("div", {style:{fontSize:"13px", color:"#aaa", marginBottom:"26px"}},
+      "대단해요! 다음에는 무엇을 할까요?"));
 
     // 경북독서친구 카드
-    const bfCard = el("div",{style:{background:"#F1F8E9",borderRadius:"16px",padding:"16px",marginBottom:"12px",border:"2px solid #C8E6C9",textAlign:"left",cursor:"pointer"}});
-    const bfRow = el("div",{style:{display:"flex",alignItems:"center",gap:"10px",marginBottom:"8px"}});
-    bfRow.appendChild(bookIcon(32,"#4CAF50"));
-    bfRow.appendChild(el("div",{style:{flex:"1"}},
-      el("div",{style:{fontWeight:"800",color:"#2E7D32",fontSize:"15px"}},"경북독서친구 독후활동 하기"),
-      el("div",{style:{fontSize:"11px",color:"#66BB6A"}},"인증 → 독후활동 → 하트 받기 🏆")
+    const bfCard = el("div", {style:{
+      background:"#F1F8E9", borderRadius:"16px", padding:"16px", marginBottom:"12px",
+      border:"2px solid #C8E6C9", textAlign:"left", cursor:"pointer",
+    }});
+    const bfRow = el("div", {style:{display:"flex", alignItems:"center", gap:"10px", marginBottom:"8px"}});
+    bfRow.appendChild(bookIcon(34, "#4CAF50"));
+    bfRow.appendChild(el("div", {style:{flex:"1"}},
+      el("div", {style:{fontWeight:"800", color:"#2E7D32", fontSize:"16px"}}, "경북독서친구 독후활동 하기"),
+      el("div", {style:{fontSize:"12px", color:"#66BB6A"}}, "인증 → 독후활동 → 하트 받기 🏆"),
     ));
-    bfRow.appendChild(el("div",{style:{fontSize:"20px",color:"#4CAF50"}},"→"));
+    bfRow.appendChild(el("div", {style:{fontSize:"22px", color:"#4CAF50"}}, "→"));
     bfCard.appendChild(bfRow);
-    bfCard.appendChild(el("div",{style:{fontSize:"12px",color:"#555",lineHeight:"1.6"}},"① 로그인 → ② 읽은 책 인증(6문제 중 4개↑) → ③ 독후활동 올리기\n연 4회 우수학생 도서상품권 시상! 🎁"));
-    bfCard.addEventListener("click",()=>{ state.bfGuide=state.doneBook; state.bfStep=0; render(); });
+    bfCard.appendChild(el("div", {style:{fontSize:"13px", color:"#555", lineHeight:"1.7"}},
+      "① 로그인 → ② 읽은 책 인증(6문제 중 4개↑) → ③ 독후활동 올리기\n연 4회 우수학생 도서상품권 시상! 🎁"));
+    bfCard.addEventListener("click", ()=>{ S.bfGuide=S.doneBook; S.bfStep=0; render(); });
     card.appendChild(bfCard);
 
     // 도서관 카드
-    const libCard = el("div",{style:{background:"#EBF5FB",borderRadius:"16px",padding:"14px",marginBottom:"16px",border:"2px solid #90CAF9",textAlign:"left",cursor:"pointer"}});
-    const libRow = el("div",{style:{display:"flex",alignItems:"center",gap:"10px"}});
-    libRow.appendChild(el("div",{style:{fontSize:"28px"}},"🏛️"));
-    libRow.appendChild(el("div",{style:{flex:"1"}},el("div",{style:{fontWeight:"700",color:"#1565C0",fontSize:"14px"}},"안동시어린이시립도서관"),el("div",{style:{fontSize:"11px",color:"#64B5F6"}},"다음 읽을 책 빌리러 가기")));
-    libRow.appendChild(el("div",{style:{fontSize:"20px",color:"#90CAF9"}},"→"));
+    const libCard = el("div", {style:{
+      background:"#EBF5FB", borderRadius:"16px", padding:"14px", marginBottom:"18px",
+      border:"2px solid #90CAF9", textAlign:"left", cursor:"pointer",
+    }});
+    const libRow = el("div", {style:{display:"flex", alignItems:"center", gap:"10px"}});
+    libRow.appendChild(el("div", {style:{fontSize:"30px"}}, "🏛️"));
+    libRow.appendChild(el("div", {style:{flex:"1"}},
+      el("div", {style:{fontWeight:"700", color:"#1565C0", fontSize:"15px"}}, "안동시어린이시립도서관"),
+      el("div", {style:{fontSize:"12px", color:"#64B5F6"}}, "다음 읽을 책 빌리러 가기"),
+    ));
+    libRow.appendChild(el("div", {style:{fontSize:"22px", color:"#90CAF9"}}, "→"));
     libCard.appendChild(libRow);
-    libCard.addEventListener("click",()=>window.open("https://lib.andong.go.kr/child/","_blank"));
+    libCard.addEventListener("click", ()=>window.open("https://lib.andong.go.kr/child/","_blank"));
     card.appendChild(libCard);
 
-    const homeBtn = el("button",{style:{width:"100%",padding:"13px",borderRadius:"14px",background:C.btn,color:"#fff",fontWeight:"700",fontSize:"15px",border:"none",cursor:"pointer"}},"홈으로 돌아가기");
-    homeBtn.addEventListener("click",()=>{ state.tab="home"; render(); });
+    const homeBtn = el("button", {style:{
+      width:"100%", padding:"15px", borderRadius:"14px",
+      background:C.btn, color:"#fff", fontWeight:"700", fontSize:"16px", border:"none", cursor:"pointer",
+    }}, "홈으로 돌아가기");
+    homeBtn.addEventListener("click", ()=>{ S.tab="home"; render(); });
     card.appendChild(homeBtn);
     body.appendChild(card);
   }
 
   wrap.appendChild(body);
 
-  // 하단 탭바
-  const tabBar = el("div",{style:{position:"fixed",bottom:"0",left:"0",right:"0",background:"#fff",borderTop:"1.5px solid #f0f0f0",display:"flex",padding:"8px 0 14px",boxShadow:"0 -2px 12px #0001"}});
-  [["home","🏠","이번 주"],["read","✅","읽은 책"],["library","📖","전체"]].forEach(([key,icon,label])=>{
-    const b = el("button",{style:{flex:"1",background:"none",border:"none",cursor:"pointer",color:tab===key?C.btn:"#ccc",fontSize:"10px",fontWeight:tab===key?"800":"400"}},
-      el("div",{style:{fontSize:"24px",marginBottom:"1px"}},icon), label);
-    b.addEventListener("click",()=>{ state.tab=key; render(); });
+  // ── 하단 탭바 ──
+  const tabBar = el("div", {"class":"tab-bar"});
+  [["home","🏠","이번 주"],["read","✅","읽은 책"],["library","📖","전체"]].forEach(([key,icon,label]) => {
+    const on = S.tab === key;
+    const b  = el("button", {style:{color: on?C.btn:"#bbb", fontWeight: on?"800":"400"}},
+      el("div", {"class":"icon"}, icon), label);
+    b.addEventListener("click", ()=>{ S.tab=key; render(); });
     tabBar.appendChild(b);
   });
   wrap.appendChild(tabBar);
   return wrap;
 }
 
-// ── 추천 책 카드 ──
-function buildRecCard(book, idx, C, readSet) {
-  const card = el("div",{style:{background:"#fff",borderRadius:"18px",padding:"16px",marginBottom:"12px",border:`2px solid ${C.border}`,boxShadow:`0 3px 14px ${C.soft}88`,position:"relative"}});
-  const badge = el("div",{style:{position:"absolute",top:"-11px",left:"16px",background:C.btn,color:"#fff",borderRadius:"20px",padding:"3px 14px",fontSize:"12px",fontWeight:"700"}},`추천 ${idx}`);
-  card.appendChild(badge);
-  const row = el("div",{style:{display:"flex",gap:"12px",alignItems:"flex-start",marginTop:"6px"}});
-  row.appendChild(el("div",{style:{width:"48px",height:"60px",background:C.card,borderRadius:"10px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"28px",flexShrink:"0",border:`1.5px solid ${C.border}`}},"📖"));
-  const info = el("div",{style:{flex:"1"}});
-  info.appendChild(el("div",{style:{fontWeight:"800",fontSize:"15px",color:C.text,lineHeight:"1.35"}},book.t));
-  info.appendChild(el("div",{style:{fontSize:"12px",color:"#999",marginTop:"3px"}},book.a));
-  info.appendChild(el("div",{style:{fontSize:"11px",color:"#ccc"}},book.p));
+// ── 추천 책 카드 ─────────────────────────────────────────
+function recCard(book, idx, C, readSet) {
+  const card = el("div", {style:{
+    background:"#fff", borderRadius:"18px", padding:"16px", marginBottom:"14px",
+    border:`2px solid ${C.border}`, boxShadow:`0 3px 14px ${C.soft}88`,
+    position:"relative",
+  }});
+  card.appendChild(el("div", {style:{
+    position:"absolute", top:"-12px", left:"16px",
+    background:C.btn, color:"#fff", borderRadius:"20px",
+    padding:"4px 16px", fontSize:"13px", fontWeight:"700",
+  }}, `추천 ${idx}`));
+
+  const row = el("div", {style:{display:"flex", gap:"12px", alignItems:"flex-start", marginTop:"8px"}});
+  row.appendChild(el("div", {style:{
+    width:"50px", height:"62px", background:C.card, borderRadius:"10px",
+    display:"flex", alignItems:"center", justifyContent:"center",
+    fontSize:"30px", flexShrink:"0", border:`1.5px solid ${C.border}`,
+  }}, "📖"));
+  const info = el("div", {style:{flex:"1"}});
+  info.appendChild(el("div", {style:{fontWeight:"800", fontSize:"16px", color:C.text, lineHeight:"1.35"}}, book.t));
+  info.appendChild(el("div", {style:{fontSize:"13px", color:"#999", marginTop:"4px"}}, book.a));
+  info.appendChild(el("div", {style:{fontSize:"12px", color:"#ccc"}}, book.p));
   row.appendChild(info);
   card.appendChild(row);
 
-  // 도서관 소장 확인 버튼
-  const libBtn = el("button",{style:{width:"100%",marginTop:"8px",padding:"8px",borderRadius:"10px",border:"2px dashed #90CAF9",background:"#EBF5FB",color:"#1565C0",fontSize:"12px",fontWeight:"600",cursor:"pointer"}},"📚 안동시어린이도서관 소장 확인");
-  libBtn.addEventListener("click",()=>window.open(LIB+encodeURIComponent(book.t),"_blank"));
+  const libBtn = el("button", {style:{
+    width:"100%", marginTop:"10px", padding:"9px",
+    borderRadius:"10px", border:"2px dashed #90CAF9",
+    background:"#EBF5FB", color:"#1565C0", fontSize:"13px", fontWeight:"600", cursor:"pointer",
+  }}, "📚 안동시어린이도서관 소장 확인");
+  libBtn.addEventListener("click", ()=>window.open(LIB+encodeURIComponent(book.t), "_blank"));
   card.appendChild(libBtn);
 
-  if(!readSet.has(book.t)) {
-    const rb = el("button",{style:{width:"100%",marginTop:"8px",padding:"11px",borderRadius:"12px",background:C.btn,color:"#fff",fontWeight:"700",fontSize:"14px",border:"none",cursor:"pointer",boxShadow:`0 2px 8px ${C.btn}44`}},"다 읽었어요! ✏️");
-    rb.addEventListener("click",()=>{ state.reviewTarget=book; state.reviewText=""; state.reviewStar=3; state.tab="review"; render(); });
+  if (!readSet.has(book.t)) {
+    const rb = el("button", {style:{
+      width:"100%", marginTop:"8px", padding:"12px",
+      borderRadius:"12px", background:C.btn, color:"#fff",
+      fontWeight:"700", fontSize:"15px", border:"none", cursor:"pointer",
+      boxShadow:`0 2px 8px ${C.btn}44`,
+    }}, "다 읽었어요! ✏️");
+    rb.addEventListener("click", ()=>{
+      S.reviewTarget=book; S.reviewText=""; S.reviewStar=3; S.tab="review"; render();
+    });
     card.appendChild(rb);
   }
   return card;
 }
 
-// ── 읽은 책 카드 ──
-function buildReadCard(r, C, deleteIdx) {
-  const card = el("div",{style:{background:"#fff",borderRadius:"14px",padding:"12px 14px",marginBottom:"9px",border:`1.5px solid ${C.border}`,display:"flex",gap:"12px",alignItems:"flex-start"}});
-  card.appendChild(el("div",{style:{fontSize:"28px",flexShrink:"0",lineHeight:"1",marginTop:"2px"}},FACE[r.rating-1]));
-  const body2 = el("div",{style:{flex:"1",minWidth:"0"}});
-  body2.appendChild(el("div",{style:{fontWeight:"700",fontSize:"14px",color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},r.t));
-  body2.appendChild(el("div",{style:{fontSize:"11px",color:"#bbb"}},r.a+(r.date?" · "+r.date:"")));
-  body2.appendChild(el("div",{style:{fontSize:"12px",color:C.btn,margin:"3px 0"}},"⭐".repeat(r.rating)+"☆".repeat(5-r.rating)));
-  if(r.review) body2.appendChild(el("div",{style:{fontSize:"13px",color:"#555",fontStyle:"italic",background:"#fafafa",padding:"6px 10px",borderRadius:"8px",marginTop:"4px",borderLeft:`3px solid ${C.border}`}},'"'+r.review+'"'));
-  const bfBtn = el("button",{style:{marginTop:"8px",padding:"5px 12px",borderRadius:"8px",border:"none",background:"#E8F5E9",color:"#2E7D32",fontSize:"11px",cursor:"pointer",fontWeight:"600"}},"경북독서친구 독후활동 →");
-  bfBtn.addEventListener("click",()=>{ state.bfGuide=r; state.bfStep=0; render(); });
+// ── 읽은 책 카드 ─────────────────────────────────────────
+function readCard(r, C, deleteIdx) {
+  const card = el("div", {style:{
+    background:"#fff", borderRadius:"14px", padding:"13px 14px", marginBottom:"10px",
+    border:`1.5px solid ${C.border}`, display:"flex", gap:"12px", alignItems:"flex-start",
+  }});
+  card.appendChild(el("div", {style:{fontSize:"30px", flexShrink:"0", lineHeight:"1", marginTop:"2px"}},
+    FACE[r.rating-1]));
+
+  const body2 = el("div", {style:{flex:"1", minWidth:"0"}});
+  body2.appendChild(el("div", {style:{fontWeight:"700", fontSize:"15px", color:C.text,
+    whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis"}}, r.t));
+  body2.appendChild(el("div", {style:{fontSize:"12px", color:"#bbb"}},
+    r.a+(r.date?" · "+r.date:"")));
+  body2.appendChild(el("div", {style:{fontSize:"13px", color:C.btn, margin:"3px 0"}},
+    "⭐".repeat(r.rating)+"☆".repeat(5-r.rating)));
+  if (r.review) {
+    body2.appendChild(el("div", {style:{
+      fontSize:"13px", color:"#555", fontStyle:"italic",
+      background:"#fafafa", padding:"7px 11px", borderRadius:"8px",
+      marginTop:"5px", borderLeft:`3px solid ${C.border}`,
+    }}, '"'+r.review+'"'));
+  }
+  const bfBtn = el("button", {style:{
+    marginTop:"9px", padding:"6px 14px", borderRadius:"8px",
+    border:"none", background:"#E8F5E9", color:"#2E7D32",
+    fontSize:"12px", cursor:"pointer", fontWeight:"600",
+  }}, "경북독서친구 독후활동 →");
+  bfBtn.addEventListener("click", ()=>{ S.bfGuide=r; S.bfStep=0; render(); });
   body2.appendChild(bfBtn);
   card.appendChild(body2);
-  if(deleteIdx!==null) {
-    const del = el("button",{style:{background:"none",border:"none",color:"#ddd",fontSize:"20px",cursor:"pointer",flexShrink:"0",lineHeight:"1",padding:"0 2px"}},"×");
-    del.addEventListener("click",()=>{
-      const store=getStore(); const kd=store[state.kid]||{read:[]};
-      store[state.kid]={...kd,read:(kd.read||[]).filter((_,j)=>j!==deleteIdx)};
-      setStore(store); render();
+
+  if (deleteIdx !== null) {
+    const del = el("button", {style:{
+      background:"none", border:"none", color:"#ddd",
+      fontSize:"22px", cursor:"pointer", flexShrink:"0", lineHeight:"1", padding:"0 2px",
+    }}, "×");
+    del.addEventListener("click", ()=>{
+      const store = getStore();
+      const kd    = store[S.kid] || {read:[]};
+      store[S.kid] = {...kd, read:(kd.read||[]).filter((_,j)=>j!==deleteIdx)};
+      setStore(store);
+      render();
     });
     card.appendChild(del);
   }
   return card;
 }
 
-// ── 경북독서친구 안내 모달 ──
+// ── 경북독서친구 안내 모달 ───────────────────────────────
 function buildBFGuide() {
   const steps = [
-    { icon:"🔑", title:"경북독서친구 로그인", desc:"bookfriend.info.go.kr 에서\n아이 계정으로 로그인합니다.", url:`${BF}/login/login.do`, btn:"로그인 페이지 열기" },
-    { icon:"📚", title:"읽은 책 인증 받기", desc:"독후활동 > 초등학교 > 권장도서/인증\n> 읽은 책 인증받기\n\n6문제 중 4개 이상 맞으면 인증 완료!\n미통과 시 2시간 후 재응시 가능", url:`${BF}/elibbook/certBookList.do`, btn:"인증 페이지 열기" },
-    { icon:"✏️", title:"온라인 독후활동 하기", desc:"독후활동 > 권장도서 독후활동\n\n독후감·그림·사진·만화 등 다양한 방식!\n매 분기 우수학생 도서상품권 수여 🎁", url:`${BF}/elibbook/bookRptWrite.do`, btn:"독후활동 페이지 열기" },
-    { icon:"❤️", title:"평가(하트) 받기", desc:"심사위원 선생님 52명이\n올린 독후활동을 심사하고 하트를 부여!\n\n연 4회 우수학생 선발해 시상 🏆", url:null, btn:null },
+    { icon:"🔑", title:"경북독서친구 로그인",
+      desc:"bookfriend.info.go.kr 에서\n아이 계정으로 로그인합니다.",
+      url:`${BF}/login/login.do`, btn:"로그인 페이지 열기" },
+    { icon:"📚", title:"읽은 책 인증 받기",
+      desc:"독후활동 > 초등학교 > 권장도서/인증\n> 읽은 책 인증받기\n\n6문제 중 4개 이상 맞으면 인증 완료!\n미통과 시 2시간 후 재응시 가능",
+      url:`${BF}/elibbook/certBookList.do`, btn:"인증 페이지 열기" },
+    { icon:"✏️", title:"온라인 독후활동 하기",
+      desc:"독후활동 > 권장도서 독후활동\n\n독후감·그림·사진·만화 등 다양한 방식!\n매 분기 우수학생 도서상품권 수여 🎁",
+      url:`${BF}/elibbook/bookRptWrite.do`, btn:"독후활동 페이지 열기" },
+    { icon:"❤️", title:"평가(하트) 받기",
+      desc:"심사위원 선생님 52명이\n올린 독후활동을 심사하고 하트를 부여!\n\n연 4회 우수학생 선발해 시상 🏆",
+      url:null, btn:null },
   ];
-  const s = steps[state.bfStep];
+  const s = steps[S.bfStep];
 
-  const overlay = el("div",{style:{position:"fixed",inset:"0",background:"rgba(0,0,0,0.55)",zIndex:"999",display:"flex",alignItems:"flex-end",justifyContent:"center"}});
-  const modal = el("div",{style:{background:"#fff",borderRadius:"24px 24px 0 0",width:"100%",maxWidth:"480px",padding:"24px 20px 36px",boxShadow:"0 -4px 32px #0004"}});
+  const overlay = el("div", {style:{
+    position:"fixed", inset:"0", background:"rgba(0,0,0,0.55)",
+    zIndex:"999", display:"flex", alignItems:"flex-end", justifyContent:"center",
+  }});
+
+  const modal = el("div", {style:{
+    background:"#fff", borderRadius:"24px 24px 0 0",
+    width:"100%", maxWidth:"600px",
+    padding:`24px 20px max(36px, env(safe-area-inset-bottom))`,
+    boxShadow:"0 -4px 32px #0004",
+  }});
 
   // 헤더
-  const hdrRow = el("div",{style:{display:"flex",alignItems:"center",gap:"10px",marginBottom:"20px"}});
-  hdrRow.appendChild(bookIcon(36,"#4CAF50"));
-  hdrRow.appendChild(el("div",{style:{flex:"1"}},
-    el("div",{style:{fontWeight:"800",fontSize:"15px",color:"#2E7D32"}},"경북독서친구 독후활동 절차"),
-    el("div",{style:{fontSize:"11px",color:"#aaa"}},`「${state.bfGuide?.t}」 읽기 완료 후 순서대로 진행하세요`)
+  const hdrRow = el("div", {style:{display:"flex", alignItems:"center", gap:"10px", marginBottom:"20px"}});
+  hdrRow.appendChild(bookIcon(36, "#4CAF50"));
+  hdrRow.appendChild(el("div", {style:{flex:"1"}},
+    el("div", {style:{fontWeight:"800", fontSize:"15px", color:"#2E7D32"}}, "경북독서친구 독후활동 절차"),
+    el("div", {style:{fontSize:"12px", color:"#aaa"}},
+      `「${S.bfGuide?.t}」 읽기 완료 후 순서대로 진행하세요`),
   ));
-  const closeBtn = el("button",{style:{background:"none",border:"none",fontSize:"22px",color:"#ccc",cursor:"pointer"}},"×");
-  closeBtn.addEventListener("click",()=>{ state.bfGuide=null; render(); });
+  const closeBtn = el("button", {style:{background:"none", border:"none", fontSize:"24px", color:"#ccc", cursor:"pointer"}}, "×");
+  closeBtn.addEventListener("click", ()=>{ S.bfGuide=null; render(); });
   hdrRow.appendChild(closeBtn);
   modal.appendChild(hdrRow);
 
-  // 스텝 인디케이터
-  const dots = el("div",{style:{display:"flex",gap:"6px",marginBottom:"20px",justifyContent:"center"}});
-  steps.forEach((_,i)=>{
-    const on = i===state.bfStep, done = i<state.bfStep;
-    const d = el("div",{style:{height:"10px",borderRadius:"5px",background:on?"#4CAF50":done?"#A5D6A7":"#e0e0e0",width:on?"32px":"10px",transition:"all .3s",cursor:"pointer"}});
-    d.addEventListener("click",()=>{ state.bfStep=i; render(); });
+  // 스텝 도트
+  const dots = el("div", {style:{display:"flex", gap:"6px", marginBottom:"20px", justifyContent:"center"}});
+  steps.forEach((_, i) => {
+    const on   = i === S.bfStep;
+    const done = i < S.bfStep;
+    const d = el("div", {style:{
+      height:"10px", borderRadius:"5px", cursor:"pointer", transition:"all .3s",
+      background: on?"#4CAF50":done?"#A5D6A7":"#e0e0e0",
+      width: on?"32px":"10px",
+    }});
+    d.addEventListener("click", ()=>{ S.bfStep=i; render(); });
     dots.appendChild(d);
   });
   modal.appendChild(dots);
 
   // 스텝 카드
-  const stepCard = el("div",{style:{background:"#F1F8E9",borderRadius:"16px",padding:"20px 18px",marginBottom:"20px",border:"2px solid #C8E6C9"}});
-  stepCard.appendChild(el("div",{style:{fontSize:"36px",marginBottom:"8px",textAlign:"center"}},s.icon));
-  stepCard.appendChild(el("div",{style:{fontWeight:"800",fontSize:"17px",color:"#2E7D32",marginBottom:"10px",textAlign:"center"}},`${state.bfStep+1}단계. ${s.title}`));
-  stepCard.appendChild(el("div",{style:{fontSize:"13px",color:"#555",lineHeight:"1.7",whiteSpace:"pre-line"}},s.desc));
-  if(s.url) {
-    const goBtn = el("button",{style:{width:"100%",marginTop:"14px",padding:"11px",borderRadius:"12px",background:"#43A047",color:"#fff",fontWeight:"700",fontSize:"14px",border:"none",cursor:"pointer"}},s.btn+" →");
-    goBtn.addEventListener("click",()=>window.open(s.url,"_blank"));
+  const stepCard = el("div", {style:{
+    background:"#F1F8E9", borderRadius:"16px", padding:"20px 18px",
+    marginBottom:"20px", border:"2px solid #C8E6C9",
+  }});
+  stepCard.appendChild(el("div", {style:{fontSize:"38px", marginBottom:"8px", textAlign:"center"}}, s.icon));
+  stepCard.appendChild(el("div", {style:{fontWeight:"800", fontSize:"18px", color:"#2E7D32",
+    marginBottom:"10px", textAlign:"center"}}, `${S.bfStep+1}단계. ${s.title}`));
+  stepCard.appendChild(el("div", {style:{fontSize:"14px", color:"#555", lineHeight:"1.75",
+    whiteSpace:"pre-line"}}, s.desc));
+  if (s.url) {
+    const goBtn = el("button", {style:{
+      width:"100%", marginTop:"14px", padding:"12px",
+      borderRadius:"12px", background:"#43A047", color:"#fff",
+      fontWeight:"700", fontSize:"15px", border:"none", cursor:"pointer",
+    }}, s.btn+" →");
+    goBtn.addEventListener("click", ()=>window.open(s.url, "_blank"));
     stepCard.appendChild(goBtn);
   }
   modal.appendChild(stepCard);
 
   // 이전/다음
-  const navRow = el("div",{style:{display:"flex",gap:"10px",marginBottom:"14px"}});
-  const prevBtn = el("button",{style:{flex:"1",padding:"11px",borderRadius:"12px",border:"2px solid #e0e0e0",background:"#fff",color:state.bfStep===0?"#ccc":"#555",fontWeight:"600",fontSize:"14px",cursor:state.bfStep===0?"default":"pointer"}},"← 이전");
-  if(state.bfStep>0) prevBtn.addEventListener("click",()=>{ state.bfStep--; render(); });
+  const navRow = el("div", {style:{display:"flex", gap:"10px", marginBottom:"14px"}});
+  const prevBtn = el("button", {style:{
+    flex:"1", padding:"12px", borderRadius:"12px",
+    border:"2px solid #e0e0e0", background:"#fff",
+    color: S.bfStep===0?"#ccc":"#555",
+    fontWeight:"600", fontSize:"15px",
+    cursor: S.bfStep===0?"default":"pointer",
+  }}, "← 이전");
+  if (S.bfStep > 0) prevBtn.addEventListener("click", ()=>{ S.bfStep--; render(); });
   navRow.appendChild(prevBtn);
 
-  if(state.bfStep<steps.length-1) {
-    const nextBtn = el("button",{style:{flex:"2",padding:"11px",borderRadius:"12px",border:"none",background:"#43A047",color:"#fff",fontWeight:"700",fontSize:"14px",cursor:"pointer"}},"다음 단계 →");
-    nextBtn.addEventListener("click",()=>{ state.bfStep++; render(); });
+  if (S.bfStep < steps.length-1) {
+    const nextBtn = el("button", {style:{
+      flex:"2", padding:"12px", borderRadius:"12px",
+      border:"none", background:"#43A047", color:"#fff",
+      fontWeight:"700", fontSize:"15px", cursor:"pointer",
+    }}, "다음 단계 →");
+    nextBtn.addEventListener("click", ()=>{ S.bfStep++; render(); });
     navRow.appendChild(nextBtn);
   } else {
-    const doneBtn = el("button",{style:{flex:"2",padding:"11px",borderRadius:"12px",border:"none",background:"#4CAF50",color:"#fff",fontWeight:"700",fontSize:"14px",cursor:"pointer"}},"완료! 독후활동 끝 🎉");
-    doneBtn.addEventListener("click",()=>{ state.bfGuide=null; state.tab="home"; render(); });
+    const doneBtn = el("button", {style:{
+      flex:"2", padding:"12px", borderRadius:"12px",
+      border:"none", background:"#4CAF50", color:"#fff",
+      fontWeight:"700", fontSize:"15px", cursor:"pointer",
+    }}, "완료! 독후활동 끝 🎉");
+    doneBtn.addEventListener("click", ()=>{ S.bfGuide=null; S.tab="home"; render(); });
     navRow.appendChild(doneBtn);
   }
   modal.appendChild(navRow);
 
-  // 홈페이지 바로가기
-  const homeLink = el("div",{style:{textAlign:"center"}});
-  const hl = el("button",{style:{background:"none",border:"none",color:"#4CAF50",fontSize:"13px",cursor:"pointer",fontWeight:"600",textDecoration:"underline"}},"경북독서친구 홈페이지 바로가기");
-  hl.addEventListener("click",()=>window.open(BF,"_blank"));
-  homeLink.appendChild(hl);
-  modal.appendChild(homeLink);
+  const hl = el("button", {style:{
+    display:"block", margin:"0 auto",
+    background:"none", border:"none", color:"#4CAF50",
+    fontSize:"14px", cursor:"pointer", fontWeight:"600", textDecoration:"underline",
+  }}, "경북독서친구 홈페이지 바로가기");
+  hl.addEventListener("click", ()=>window.open(BF, "_blank"));
+  modal.appendChild(hl);
 
   overlay.appendChild(modal);
   return overlay;
 }
 
-// 초기 렌더
+// 시작
 render();
 </script>
 
-<!-- PWA 매니페스트 (홈 화면 추가용) -->
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'><rect x='8' y='18' width='64' height='44' rx='11' fill='%234DB6AC'/><polygon points='26,62 18,77 40,62' fill='%234DB6AC'/><ellipse cx='26' cy='38' rx='9' ry='10' fill='white'/><circle cx='27.5' cy='39' r='5.5' fill='%231a1a1a'/><circle cx='25' cy='36.5' r='2.2' fill='white'/><ellipse cx='50' cy='38' rx='9' ry='10' fill='white'/><circle cx='51.5' cy='39' r='5.5' fill='%231a1a1a'/><circle cx='49' cy='36.5' r='2.2' fill='white'/></svg>"/>
 </body>
 </html>
